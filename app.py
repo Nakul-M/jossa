@@ -95,7 +95,9 @@ def predict_datapoint():
     pwd = request.form["PWD"]
     year = int(request.form["Year"])
 
-    results = []
+    # Prepare CSV for streaming results
+    csv_file = "eligible_results.csv"
+    first_row = True  # to write header only once
 
     for institute in colleges:
         for program in programs:
@@ -112,31 +114,37 @@ def predict_datapoint():
             predicted_rank = get_model().predict(features_df)[0]
 
             if user_rank - 2000 <= predicted_rank:
-                results.append({
+                row = {
                     "Institute": institute,
                     "Program": program,
                     "Predicted Closing Rank": int(predicted_rank)
-                })
+                }
 
-    results_df = pd.DataFrame(results)
+                # Write row to CSV immediately
+                df_row = pd.DataFrame([row])
+                if first_row:
+                    df_row.to_csv(csv_file, index=False, mode='w')
+                    first_row = False
+                else:
+                    df_row.to_csv(csv_file, index=False, mode='a', header=False)
 
-    if results_df.empty:
-        return render_template("home.html", tables=[], user_rank=user_rank,
-                               message="No eligible options found.")
+    # Load CSV to render HTML
+    if os.path.exists(csv_file):
+        results_df = pd.read_csv(csv_file)
+        # Deduplicate and sort
+        results_df = results_df.sort_values("Predicted Closing Rank").drop_duplicates(
+            subset=["Institute", "Program"], keep="first"
+        ).reset_index(drop=True)
+        # Save final CSV
+        results_df.to_csv(csv_file, index=False)
+        message = f"Found {len(results_df)} eligible options."
+        tables = [results_df.to_html(classes='table table-striped', index=False)]
+    else:
+        message = "No eligible options found."
+        tables = []
 
-    # Deduplicate and sort
-    results_df = results_df.sort_values("Predicted Closing Rank").drop_duplicates(
-        subset=["Institute", "Program"], keep="first"
-    ).reset_index(drop=True)
+    return render_template("home.html", tables=tables, user_rank=user_rank, message=message)
 
-    results_df.to_csv("eligible_results.csv", index=False)
-
-    return render_template(
-        "home.html",
-        tables=[results_df.to_html(classes='table table-striped', index=False)],
-        user_rank=user_rank,
-        message=f"Found {len(results_df)} eligible options."
-    )
 
 @app.route("/download")
 def download_pdf():
