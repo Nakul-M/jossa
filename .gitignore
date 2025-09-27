@@ -1,0 +1,4 @@
+# Ignore pickle and model files
+*.pkl
+*.pickle
+models/
