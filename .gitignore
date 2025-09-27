@@ -2,3 +2,4 @@
 *.pkl
 *.pickle
 models/
+eligible_results.csv
