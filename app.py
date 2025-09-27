@@ -1,6 +1,6 @@
 from flask import Flask, request, render_template, send_file
 import pandas as pd
-import pickle
+import joblib
 import os
 import gdown
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -10,25 +10,29 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
 
-# ========== Google Drive Model Setup ==========
-MODEL_PATH = "./models/jossa-dummy.pkl"
-FILE_ID = "1rQsmDvPoqFjAGNd0qYpj8CCoyL1wP2QQ"  # 👈 replace with your actual Google Drive file ID
+# =================== Model Setup ===================
+MODEL_PATH = "./models/jossa-dummy.joblib"
+FILE_ID = "1rQsmDvPoqFjAGNd0qYpj8CCoyL1wP2QQ"
 URL = f"https://drive.google.com/uc?id={FILE_ID}"
 
-# Download model from Google Drive if not already present
+# Download model from Google Drive if not present
 if not os.path.exists(MODEL_PATH):
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     print("Downloading model from Google Drive...")
     gdown.download(URL, MODEL_PATH, quiet=False)
 
-# Load trained ML model
-with open(MODEL_PATH, "rb") as f:
-    model = pickle.load(f)
+# Lazy-load model
+model = None
+def get_model():
+    global model
+    if model is None:
+        print("Loading ML model...")
+        model = joblib.load(MODEL_PATH)
+    return model
 
-# Load dataset (optional, if you want to use later)
-df = pd.read_csv("2021.csv")
+# =================== Dataset & Constants ===================
+df = pd.read_csv("2021.csv")  # optional
 
-# List of Colleges / Institutes
 colleges = [
     "National Institute of Technology, Uttarakhand",
     "National Institute of Technology, Warangal",
@@ -64,7 +68,6 @@ colleges = [
     "National Institute of Technology, Sikkim"
 ]
 
-# List of Academic Programs
 programs = [
     "Computer Science and Engineering (4 Years, B.Tech)",
     "Electronics and Communication Engineering (4 Years, B.Tech)",
@@ -78,6 +81,7 @@ programs = [
     "Computer Engineering (4 Years, B.Tech)",
 ]
 
+# =================== Routes ===================
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -104,9 +108,8 @@ def predict_datapoint():
                 "Year": year,
                 "PWD": pwd
             }
-
             features_df = pd.DataFrame([input_data])
-            predicted_rank = model.predict(features_df)[0]
+            predicted_rank = get_model().predict(features_df)[0]
 
             if user_rank - 2000 <= predicted_rank:
                 results.append({
@@ -118,9 +121,10 @@ def predict_datapoint():
     results_df = pd.DataFrame(results)
 
     if results_df.empty:
-        return render_template("home.html", tables=[], user_rank=user_rank, message="No eligible options found.")
+        return render_template("home.html", tables=[], user_rank=user_rank,
+                               message="No eligible options found.")
 
-    # Deduplicate + sort
+    # Deduplicate and sort
     results_df = results_df.sort_values("Predicted Closing Rank").drop_duplicates(
         subset=["Institute", "Program"], keep="first"
     ).reset_index(drop=True)

@@ -7,3 +7,5 @@ matplotlib
 reportlab
 gunicorn
 gdown
+joblib
+
